@@ -6,6 +6,8 @@ import tkinter as tk
 import mss
 import threading
 import keyboard
+import concurrent.futures
+import numpy as np
 
 last_clicked = None
 rules = []
@@ -15,28 +17,15 @@ stop_flag = threading.Event()
 
 
 def create_calque(directory):
-    # Get a list of all image files in the directory
     image_files = [f for f in os.listdir(directory) if f.endswith('.jpg') or f.endswith('.png') and f != 'calque.png']
-    images = []
-    # Open all images and add them to the list
-    for image_file in image_files:
-        try:
-            img = Image.open(os.path.join(directory, image_file))
-            images.append(img)
-        except:
-            print(f"{image_file} is not a valid image file.")
-            continue
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        images = list(executor.map(Image.open, [os.path.join(directory, f) for f in image_files]))
     width, height = images[0].size
-    result_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-    for x in range(width):
-        for y in range(height):
-            pixels = [img.getpixel((x, y)) for img in images]
-            if all(p == pixels[0] for p in pixels):
-                result_image.putpixel((x, y), pixels[0])
-
-    # Save the final output image to the directory as calque.jpg
+    numpy_images = np.array([np.array(img) for img in images])
+    result_image = numpy_images[0]
+    result_image[np.where(~np.all(numpy_images==result_image,axis=0))] = 0
+    result_image = Image.fromarray(result_image.astype(np.uint8))
     result_image.save(os.path.join(directory, 'calque.png'))
-
     return result_image
 
 
@@ -112,7 +101,10 @@ if __name__ == '__main__':
     # Create a tkinter window
     root = tk.Tk()
     # set window size
-    root.geometry("1200x800")
+    # get screen width and height
+    width = root.winfo_screenwidth()
+    height = root.winfo_screenheight()
+    root.geometry(f'{width}x{height}')
     # create the main frame
     main_frame = tk.Frame(root)
 
@@ -209,9 +201,14 @@ if __name__ == '__main__':
     button = tk.Button(main_frame, text='Add rule', command=create_rule)
     button.grid(row=1, column=2)
 
-    # add input accept number
+    # add input only for number
     input_number = tk.Entry(main_frame, font=('Arial', 14))
     input_number.grid(row=1, column=3)
+    # check if the input is a number
+    input_number.bind('<KeyRelease>', lambda event: input_number.delete(0, tk.END) if not input_number.get().isdigit() else None)
+
+    start_button = tk.Button(main_frame, text='Start', command=lambda: start_thread(root, start_button, None, None, None))
+    start_button.grid(row=1, column=4)
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
 
