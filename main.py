@@ -1,6 +1,7 @@
 import os
 from time import sleep
 
+
 from PIL import Image, ImageTk
 import tkinter as tk
 import mss
@@ -8,6 +9,7 @@ import threading
 import keyboard
 import concurrent.futures
 import numpy as np
+import cv2
 
 last_clicked = None
 rules = []
@@ -18,14 +20,23 @@ stop_flag = threading.Event()
 
 def create_calque(directory):
     image_files = [f for f in os.listdir(directory) if f.endswith('.jpg') or f.endswith('.png') and f != 'calque.png']
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        images = list(executor.map(Image.open, [os.path.join(directory, f) for f in image_files]))
-    width, height = images[0].size
-    numpy_images = np.array([np.array(img) for img in images])
-    result_image = numpy_images[0]
-    result_image[np.where(~np.all(numpy_images==result_image,axis=0))] = 0
-    result_image = Image.fromarray(result_image.astype(np.uint8))
-    result_image.save(os.path.join(directory, 'calque.png'))
+    if len(image_files) == 1:
+        result = Image.open(directory + '/' + image_files[0])
+        result.save(directory + '/calque.png')
+        return result
+    # open all images in images
+    images = [Image.open(directory + '/' + f) for f in image_files]
+
+    pixels_array = [list(image.getdata()) for image in images]
+    result = [
+        list(set([pixels_array[j][i] for j in range(len(pixels_array))]))[0] if len(
+            set([pixels_array[j][i] for j in range(len(pixels_array))])) == 1 else (0, 0, 0, 0)
+        for i in range(len(pixels_array[0]))
+    ]
+    result_image = Image.new("RGBA", images[0].size)
+    result_image.putdata(result)
+    result_image.save(directory + '/calque.png')
+
     return result_image
 
 
@@ -81,6 +92,9 @@ def start_thread(tk_root, button, label_image, label, name):
         print('thread already started')
         thread_started = False
         stop_flag.set()
+        current_thread.join()
+        print('thread stopped')
+        start_thread(tk_root, button, label_image, label, name)
 
 
 if __name__ == '__main__':
@@ -184,9 +198,13 @@ if __name__ == '__main__':
 
         rule_button = tk.Button(rule_frame, text='Select', font=('Arial', 14),
                                 command=lambda: start_thread(root, rule_button, label_image, label, name))
+        label_image.pack(side=tk.LEFT, padx=5, pady=5)
         rule_button.pack(side=tk.RIGHT, padx=5, pady=5)
 
-        label_image.pack()
+
+        # create an input who wait for a keyboard touch
+        input_touch = tk.Entry(rule_frame, font=('Arial', 14))
+        input_touch.pack(side=tk.RIGHT, padx=5, pady=5)
 
         input_text.delete(0, tk.END)
 
